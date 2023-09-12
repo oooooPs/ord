@@ -3,6 +3,7 @@ use {
     accept_json::AcceptJson,
     deserialize_from_str::DeserializeFromStr,
     error::{OptionExt, ServerError, ServerResult},
+    rest::Rest
   },
   super::*,
   crate::page_config::PageConfig,
@@ -20,6 +21,7 @@ use {
     http::{header, HeaderMap, HeaderValue, StatusCode, Uri},
     response::{IntoResponse, Redirect, Response},
     routing::get,
+    routing::post,
     Router, TypedHeader,
   },
   axum_server::Handle,
@@ -41,6 +43,7 @@ use {
 
 mod accept_json;
 mod error;
+mod rest;
 
 #[derive(Clone)]
 pub struct ServerConfig {
@@ -199,6 +202,13 @@ impl Server {
         .route("/static/*path", get(Self::static_asset))
         .route("/status", get(Self::status))
         .route("/tx/:txid", get(Self::transaction))
+
+        .route("/rest/inscription/:inscription_id", get(Rest::inscription))
+        .route("/rest/inscriptions", post(Rest::inscriptions))
+        .route("/rest/sat/:sat", get(Rest::sat))
+        .route("/rest/output/:output", get(Rest::output))
+        .route("/rest/outputs", post(Rest::outputs))
+
         .layer(Extension(index))
         .layer(Extension(page_config))
         .layer(Extension(Arc::new(config)))

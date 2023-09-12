@@ -507,7 +507,8 @@ impl Index {
   }
 
   pub(crate) fn is_json_api_enabled(&self) -> bool {
-    self.options.enable_json_api
+    //self.options.enable_json_api
+    true
   }
 
   fn begin_read(&self) -> Result<rtx::Rtx> {

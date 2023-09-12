@@ -1,4 +1,5 @@
 use {super::*, inscription::Curse};
+use serde_json::{Value, json};
 
 #[derive(Debug, Clone)]
 pub(super) struct Flotsam {
@@ -111,6 +112,7 @@ impl<'a, 'db, 'tx> InscriptionUpdater<'a, 'db, 'tx> {
     tx: &Transaction,
     txid: Txid,
     input_sat_ranges: Option<&VecDeque<(u64, u64)>>,
+    inscription_txs: &mut Option<Vec<Value>>,
   ) -> Result {
     let mut new_inscriptions = Inscription::from_transaction(tx).into_iter().peekable();
     let mut floating_inscriptions = Vec::new();
@@ -344,6 +346,7 @@ impl<'a, 'db, 'tx> InscriptionUpdater<'a, 'db, 'tx> {
           input_sat_ranges,
           inscriptions.next().unwrap(),
           new_satpoint,
+          inscription_txs
         )?;
       }
 
@@ -364,7 +367,7 @@ impl<'a, 'db, 'tx> InscriptionUpdater<'a, 'db, 'tx> {
           outpoint: OutPoint::null(),
           offset: self.lost_sats + flotsam.offset - output_value,
         };
-        self.update_inscription_location(input_sat_ranges, flotsam, new_satpoint)?;
+        self.update_inscription_location(input_sat_ranges, flotsam, new_satpoint, inscription_txs)?;
       }
       self.lost_sats += self.reward - output_value;
       Ok(())
@@ -403,6 +406,7 @@ impl<'a, 'db, 'tx> InscriptionUpdater<'a, 'db, 'tx> {
     input_sat_ranges: Option<&VecDeque<(u64, u64)>>,
     flotsam: Flotsam,
     new_satpoint: SatPoint,
+    inscription_txs: &mut Option<Vec<Value>>,
   ) -> Result {
     let inscription_id = flotsam.inscription_id.store();
     let unbound = match flotsam.origin {
@@ -477,6 +481,59 @@ impl<'a, 'db, 'tx> InscriptionUpdater<'a, 'db, 'tx> {
 
     self.satpoint_to_id.insert(&satpoint, &inscription_id)?;
     self.id_to_satpoint.insert(&inscription_id, &satpoint)?;
+
+    if let Some(inscription_txs) = inscription_txs {
+      self.append_inscription_tx(inscription_txs, flotsam)?;
+    }
+
+    Ok(())
+  }
+
+  fn append_inscription_tx(&mut self, inscription_txs: &mut Vec<Value>, flotsam: Flotsam) -> Result {
+    let inscription_id = flotsam.inscription_id;
+    let origin = flotsam.origin;
+
+    let entry = self.id_to_entry.get(&inscription_id.store())?.map(|_entry| {InscriptionEntry::load(_entry.value())}).unwrap();
+
+    let satpoint = self.id_to_satpoint.get(&inscription_id.store())?.map(|_entry| {SatPoint::load(*_entry.value())}).unwrap();
+
+    let _old_satpoint = match origin {
+      Origin::Old { old_satpoint } => {
+        json!({
+          "offset": old_satpoint.offset,
+          "outpoint": json!({
+            "txid": old_satpoint.outpoint.txid.to_string(),
+            "vout": old_satpoint.outpoint.vout
+          })
+        })
+      },
+      _ => json!({}),
+  };
+
+    let data = json!({
+        "inscription_id": inscription_id.to_string(),
+        "location": satpoint.to_string(),
+        "block": self.height,
+        "entry": json!({
+          "fee": entry.fee,
+          "height": entry.height,
+          "number": entry.number,
+          "timestamp": entry.timestamp,
+          "sat": match entry.sat {
+            Some(sat) => sat.n().to_string(),
+            None => u64::MAX.to_string(),
+          }
+        }),
+        "satpoint": json!({
+          "offset": satpoint.offset,
+          "outpoint": json!({
+            "txid": satpoint.outpoint.txid.to_string(),
+            "vout": satpoint.outpoint.vout
+          })
+        }),
+        "old_satpoint": _old_satpoint
+    });
+    inscription_txs.push(data);
 
     Ok(())
   }

@@ -56,6 +56,8 @@ pub(crate) struct Options {
   pub(crate) wallet: String,
   #[arg(long, short, help = "Enable JSON API.")]
   pub(crate) enable_json_api: bool,
+  #[clap(long, help = "Inscription transaction will be pushed to <INSCRIPTION_TX_PUSH_URL>.")]
+  pub(crate) inscription_tx_push_url: Option<String>,
 }
 
 impl Options {
@@ -68,6 +70,13 @@ impl Options {
       Chain::Testnet
     } else {
       self.chain_argument
+    }
+  }
+
+  pub(crate) fn inscription_tx_push_url(&self) -> Option<String> {
+    match &self.inscription_tx_push_url {
+      Some(url) => Some(url.to_string()),
+      None => None
     }
   }
 

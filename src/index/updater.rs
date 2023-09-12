@@ -4,7 +4,12 @@ use {
   futures::future::try_join_all,
   std::sync::mpsc,
   tokio::sync::mpsc::{error::TryRecvError, Receiver, Sender},
+  serde_json::Value,
+  ureq::{Error, Response},
+  std::thread::sleep,
 };
+
+const PUSH_BACKOFF_FACTOR: Duration = Duration::from_secs(1);
 
 mod inscription_updater;
 
@@ -342,8 +347,12 @@ impl<'index> Updater<'_> {
     let mut outpoint_to_value = wtx.open_table(OUTPOINT_TO_VALUE)?;
 
     let index_inscriptions = self.height >= index.first_inscription_height;
+    let mut inscription_txs: Option<Vec<Value>> = None;
 
     if index_inscriptions {
+      if let Some(_) = &index.options.inscription_tx_push_url() {
+        inscription_txs = Some(Vec::new());
+      }
       // Send all missing input outpoints to be fetched right away
       let txids = block
         .txdata
@@ -465,6 +474,7 @@ impl<'index> Updater<'_> {
           &mut outputs_in_block,
           &mut inscription_updater,
           index_inscriptions,
+          &mut inscription_txs,
         )?;
 
         coinbase_inputs.extend(input_sat_ranges);
@@ -480,6 +490,7 @@ impl<'index> Updater<'_> {
           &mut outputs_in_block,
           &mut inscription_updater,
           index_inscriptions,
+          &mut inscription_txs
         )?;
       }
 
@@ -510,7 +521,7 @@ impl<'index> Updater<'_> {
       }
     } else {
       for (tx, txid) in block.txdata.iter().skip(1).chain(block.txdata.first()) {
-        inscription_updater.index_transaction_inscriptions(tx, *txid, None)?;
+        inscription_updater.index_transaction_inscriptions(tx, *txid, None, &mut inscription_txs)?;
       }
     }
 
@@ -532,12 +543,55 @@ impl<'index> Updater<'_> {
     self.height += 1;
     self.outputs_traversed += outputs_in_block;
 
+    if let Some(inscription_tx_push_url) = &index.options.inscription_tx_push_url() {
+      if let Some(inscription_txs) = inscription_txs {
+        let tx_count = inscription_txs.len();
+        if tx_count > 0 {
+          let push_start = Instant::now();
+          let data = Value::Array(inscription_txs);
+
+          loop {
+              match self.push_request(&inscription_tx_push_url, &data) {
+                Ok(_response) => {
+                  /* it worked */
+                  break;
+                },
+                Err(Error::Status(_code, _response)) => {
+                    /* the server returned an unexpected status
+                      code (such as 400, 500 etc) */
+                    log::error!("index server response with code {_code}, retry.");
+                }
+                Err(_err) => {
+                  /* some kind of io/transport error */
+                  log::error!("index server response exception, err: {_err}, retry.");
+                }
+              }
+
+              sleep(PUSH_BACKOFF_FACTOR);
+          }
+          log::info!(
+            "Pushed {} inscription txs to server in {} ms",
+            tx_count,
+            (Instant::now() - push_start).as_millis(),
+          );
+        }
+      }
+    }
+
     log::info!(
       "Wrote {sat_ranges_written} sat ranges from {outputs_in_block} outputs in {} ms",
       (Instant::now() - start).as_millis(),
     );
 
     Ok(())
+  }
+
+  fn push_request(&mut self, url: &str, data: &Value) -> Result<Response, Error> {
+    let response = ureq::post(url)
+        .set("Content-Type", "application/json")
+        .send_json(ureq::json!(&data));
+
+    response
   }
 
   fn index_transaction_sats(
@@ -550,9 +604,10 @@ impl<'index> Updater<'_> {
     outputs_traversed: &mut u64,
     inscription_updater: &mut InscriptionUpdater,
     index_inscriptions: bool,
+    inscription_txs: &mut Option<Vec<Value>>,
   ) -> Result {
     if index_inscriptions {
-      inscription_updater.index_transaction_inscriptions(tx, txid, Some(input_sat_ranges))?;
+      inscription_updater.index_transaction_inscriptions(tx, txid, Some(input_sat_ranges), inscription_txs)?;
     }
 
     for (vout, output) in tx.output.iter().enumerate() {
