@@ -588,6 +588,7 @@ impl<'index> Updater<'_> {
 
   fn push_request(&mut self, url: &str, data: &Value) -> Result<Response, Error> {
     let response = ureq::post(url)
+        .timeout(Duration::from_secs(1800))
         .set("Content-Type", "application/json")
         .send_json(ureq::json!(&data));
 
