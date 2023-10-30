@@ -123,7 +123,7 @@ impl Rest {
 }
 
 fn _output(index: &Arc<Index>, outpoint: OutPoint, page_config: &Arc<PageConfig>) -> Result<(TxOut, Vec<InscriptionId>, String, Vec<Value>), ServerError> {
-    let list = if index.has_sat_index()? {
+    let list = if index.has_sat_index() {
       index.list(outpoint)?
     } else {
       None
@@ -220,7 +220,7 @@ fn _get_inscription(
       "content": content,
       "inscription_id": inscription_id,
       "address": address,
-      "number": entry.number,
+      "number": entry.inscription_number,
       "output": match output {
         Some(v) => v,
         None => TxOut::default()

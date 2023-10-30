@@ -535,7 +535,7 @@ impl<'index> Updater<'_> {
       }
     } else {
       for (tx, txid) in block.txdata.iter().skip(1).chain(block.txdata.first()) {
-        inscription_updater.index_transaction_inscriptions(tx, *txid, None, &mut inscription_txs)?;
+        inscription_updater.index_envelopes(tx, *txid, None, &mut inscription_txs)?;
       }
     }
 
@@ -655,7 +655,7 @@ impl<'index> Updater<'_> {
     inscription_txs: &mut Option<Vec<Value>>,
   ) -> Result {
     if index_inscriptions {
-      inscription_updater.index_transaction_inscriptions(tx, txid, Some(input_sat_ranges), inscription_txs)?;
+      inscription_updater.index_envelopes(tx, txid, Some(input_sat_ranges), inscription_txs)?;
     }
 
     for (vout, output) in tx.output.iter().enumerate() {

@@ -174,7 +174,7 @@ impl Server {
       INDEXER.lock().unwrap().replace(index_thread);
 
       let server_config = Arc::new(ServerConfig {
-        is_json_api_enabled: self.enable_json_api,
+        is_json_api_enabled: true,
       });
 
       let config = options.load_config()?;
