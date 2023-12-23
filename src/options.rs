@@ -37,16 +37,16 @@ pub(crate) struct Options {
     long,
     help = "Don't look for inscriptions below <FIRST_INSCRIPTION_HEIGHT>."
   )]
-  pub(crate) first_inscription_height: Option<u64>,
+  pub(crate) first_inscription_height: Option<u32>,
   #[arg(long, help = "Limit index to <HEIGHT_LIMIT> blocks.")]
-  pub(crate) height_limit: Option<u64>,
+  pub(crate) height_limit: Option<u32>,
   #[arg(long, help = "Use index at <INDEX>.")]
   pub(crate) index: Option<PathBuf>,
   #[arg(
     long,
     help = "Track location of runes. RUNES ARE IN AN UNFINISHED PRE-ALPHA STATE AND SUBJECT TO CHANGE AT ANY TIME."
   )]
-  pub(crate) index_runes_pre_alpha_i_agree_to_get_rekt: bool,
+  pub(crate) index_runes: bool,
   #[arg(long, help = "Track location of all satoshis.")]
   pub(crate) index_sats: bool,
   #[arg(long, short, help = "Use regtest. Equivalent to `--chain regtest`.")]
@@ -85,10 +85,16 @@ impl Options {
     }
   }
 
-  pub(crate) fn first_inscription_height(&self) -> u64 {
-    if self.chain() == Chain::Regtest {
-      self.first_inscription_height.unwrap_or(0)
-    } else if integration_test() {
+  pub(crate) fn inscription_tx_push_url(&self) -> Option<String> {
+    match &self.inscription_tx_push_url {
+      Some(url) => Some(url.to_string()),
+      None => None
+    }
+  }
+
+
+  pub(crate) fn first_inscription_height(&self) -> u32 {
+    if integration_test() {
       0
     } else {
       self
@@ -97,8 +103,16 @@ impl Options {
     }
   }
 
+  pub(crate) fn first_rune_height(&self) -> u32 {
+    if integration_test() {
+      0
+    } else {
+      self.chain().first_rune_height()
+    }
+  }
+
   pub(crate) fn index_runes(&self) -> bool {
-    self.index_runes_pre_alpha_i_agree_to_get_rekt && self.chain() != Chain::Mainnet
+    self.index_runes && self.chain() != Chain::Mainnet
   }
 
   pub(crate) fn rpc_url(&self) -> String {
@@ -226,6 +240,12 @@ impl Options {
     if let Auth::CookieFile(cookie_file) = &auth {
       log::info!(
         "Using credentials from cookie file at `{}`",
+        cookie_file.display()
+      );
+
+      ensure!(
+        cookie_file.is_file(),
+        "cookie file `{}` does not exist",
         cookie_file.display()
       );
     }
@@ -543,15 +563,10 @@ mod tests {
       .network(Network::Testnet)
       .build();
 
-    let tempdir = TempDir::new().unwrap();
-
-    let cookie_file = tempdir.path().join(".cookie");
-    fs::write(&cookie_file, "username:password").unwrap();
-
     let options = Options::try_parse_from([
       "ord",
       "--cookie-file",
-      cookie_file.to_str().unwrap(),
+      rpc_server.cookie_file().to_str().unwrap(),
       "--rpc-url",
       &rpc_server.url(),
     ])
@@ -815,25 +830,37 @@ mod tests {
     assert!(Arguments::try_parse_from([
       "ord",
       "--chain=signet",
-      "--index-runes-pre-alpha-i-agree-to-get-rekt",
+      "--index-runes",
       "index",
       "update"
     ])
     .unwrap()
     .options
-    .index_runes(),);
-    assert!(!Arguments::try_parse_from([
-      "ord",
-      "--index-runes-pre-alpha-i-agree-to-get-rekt",
-      "index",
-      "update"
-    ])
-    .unwrap()
-    .options
-    .index_runes(),);
+    .index_runes());
+    assert!(
+      !Arguments::try_parse_from(["ord", "--index-runes", "index", "update"])
+        .unwrap()
+        .options
+        .index_runes()
+    );
     assert!(!Arguments::try_parse_from(["ord", "index", "update"])
       .unwrap()
       .options
-      .index_runes(),);
+      .index_runes());
+  }
+
+  #[test]
+  fn cookie_file_does_not_exist_error() {
+    assert_eq!(
+      Options {
+        cookie_file: Some("/foo/bar/baz/qux/.cookie".into()),
+        ..Default::default()
+      }
+      .bitcoin_rpc_client()
+      .map(|_| "")
+      .unwrap_err()
+      .to_string(),
+      "cookie file `/foo/bar/baz/qux/.cookie` does not exist"
+    );
   }
 }

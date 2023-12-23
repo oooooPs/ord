@@ -4,7 +4,7 @@ use super::*;
 pub(crate) struct TransactionHtml {
   blockhash: Option<BlockHash>,
   chain: Chain,
-  etching: Option<Rune>,
+  etching: Option<SpacedRune>,
   inscription: Option<InscriptionId>,
   transaction: Transaction,
   txid: Txid,
@@ -16,7 +16,7 @@ impl TransactionHtml {
     blockhash: Option<BlockHash>,
     inscription: Option<InscriptionId>,
     chain: Chain,
-    etching: Option<Rune>,
+    etching: Option<SpacedRune>,
   ) -> Self {
     Self {
       txid: transaction.txid(),
@@ -37,15 +37,12 @@ impl PageContent for TransactionHtml {
 
 #[cfg(test)]
 mod tests {
-  use {
-    super::*,
-    bitcoin::{blockdata::script, locktime::absolute::LockTime, TxOut},
-  };
+  use {super::*, bitcoin::blockdata::script};
 
   #[test]
   fn html() {
     let transaction = Transaction {
-      version: 0,
+      version: 2,
       lock_time: LockTime::ZERO,
       input: vec![TxIn {
         sequence: Default::default(),
@@ -108,7 +105,7 @@ mod tests {
   #[test]
   fn with_blockhash() {
     let transaction = Transaction {
-      version: 0,
+      version: 2,
       lock_time: LockTime::ZERO,
       input: Vec::new(),
       output: vec![

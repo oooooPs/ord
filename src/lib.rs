@@ -14,8 +14,10 @@ use {
   self::{
     arguments::Arguments,
     blocktime::Blocktime,
+    charm::Charm,
     config::Config,
     decimal::Decimal,
+    decimal_sat::DecimalSat,
     degree::Degree,
     deserialize_from_str::DeserializeFromStr,
     envelope::ParsedEnvelope,
@@ -27,21 +29,25 @@ use {
     options::Options,
     outgoing::Outgoing,
     representation::Representation,
-    runes::{Pile, Rune, RuneId},
+    runes::{Etching, Pile, SpacedRune},
     subcommand::{Subcommand, SubcommandResult},
     tally::Tally,
   },
-  anyhow::{anyhow, bail, Context, Error},
+  anyhow::{anyhow, bail, ensure, Context, Error},
   bip39::Mnemonic,
   bitcoin::{
     address::{Address, NetworkUnchecked},
-    blockdata::constants::COIN_VALUE,
+    blockdata::{
+      constants::{COIN_VALUE, DIFFCHANGE_INTERVAL, SUBSIDY_HALVING_INTERVAL},
+      locktime::absolute::LockTime,
+    },
     consensus::{self, Decodable, Encodable},
     hash_types::BlockHash,
     hashes::Hash,
     opcodes,
     script::{self, Instruction},
     Amount, Block, Network, OutPoint, Script, ScriptBuf, Sequence, Transaction, TxIn, TxOut, Txid,
+    Witness,
   },
   bitcoincore_rpc::{Client, RpcApi},
   chain::Chain,
@@ -55,7 +61,7 @@ use {
   serde::{Deserialize, Deserializer, Serialize, Serializer},
   std::{
     cmp,
-    collections::{BTreeMap, HashMap, HashSet, VecDeque},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque},
     env,
     ffi::OsString,
     fmt::{self, Display, Formatter},
@@ -78,11 +84,12 @@ use {
   tokio::{runtime::Runtime, task},
 };
 
-pub use crate::{
+pub use self::{
   fee_rate::FeeRate,
   inscription::Inscription,
   object::Object,
   rarity::Rarity,
+  runes::{Edict, Rune, RuneId, Runestone},
   sat::Sat,
   sat_point::SatPoint,
   subcommand::wallet::transaction_builder::{Target, TransactionBuilder},
@@ -108,8 +115,10 @@ macro_rules! tprintln {
 mod arguments;
 mod blocktime;
 mod chain;
+mod charm;
 mod config;
 mod decimal;
+mod decimal_sat;
 mod degree;
 mod deserialize_from_str;
 mod envelope;
@@ -123,12 +132,12 @@ mod media;
 mod object;
 mod options;
 mod outgoing;
-mod page_config;
 pub mod rarity;
 mod representation;
 pub mod runes;
 pub mod sat;
 mod sat_point;
+mod server_config;
 pub mod subcommand;
 mod tally;
 mod teleburn;
@@ -137,14 +146,48 @@ mod wallet;
 
 type Result<T = (), E = Error> = std::result::Result<T, E>;
 
-const DIFFCHANGE_INTERVAL: u64 = bitcoin::blockdata::constants::DIFFCHANGE_INTERVAL as u64;
-const SUBSIDY_HALVING_INTERVAL: u64 =
-  bitcoin::blockdata::constants::SUBSIDY_HALVING_INTERVAL as u64;
-const CYCLE_EPOCHS: u64 = 6;
+const CYCLE_EPOCHS: u32 = 6;
 
 static SHUTTING_DOWN: AtomicBool = AtomicBool::new(false);
 static LISTENERS: Mutex<Vec<axum_server::Handle>> = Mutex::new(Vec::new());
 static INDEXER: Mutex<Option<thread::JoinHandle<()>>> = Mutex::new(Option::None);
+
+const TARGET_POSTAGE: Amount = Amount::from_sat(10_000);
+
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+fn fund_raw_transaction(
+  client: &Client,
+  fee_rate: FeeRate,
+  unfunded_transaction: &Transaction,
+) -> Result<Vec<u8>> {
+  let mut buffer = Vec::new();
+
+  {
+    unfunded_transaction.version.consensus_encode(&mut buffer)?;
+    unfunded_transaction.input.consensus_encode(&mut buffer)?;
+    unfunded_transaction.output.consensus_encode(&mut buffer)?;
+    unfunded_transaction
+      .lock_time
+      .consensus_encode(&mut buffer)?;
+  }
+
+  Ok(
+    client
+      .fund_raw_transaction(
+        &buffer,
+        Some(&bitcoincore_rpc::json::FundRawTransactionOptions {
+          // NB. This is `fundrawtransaction`'s `feeRate`, which is fee per kvB
+          // and *not* fee per vB. So, we multiply the fee rate given by the user
+          // by 1000.
+          fee_rate: Some(Amount::from_sat((fee_rate.n() * 1000.0).ceil() as u64)),
+          change_position: Some(unfunded_transaction.output.len().try_into()?),
+          ..Default::default()
+        }),
+        Some(false),
+      )?
+      .hex,
+  )
+}
 
 fn integration_test() -> bool {
   env::var_os("ORD_INTEGRATION_TEST")
@@ -152,7 +195,7 @@ fn integration_test() -> bool {
     .unwrap_or(false)
 }
 
-fn timestamp(seconds: u32) -> DateTime<Utc> {
+pub fn timestamp(seconds: u32) -> DateTime<Utc> {
   Utc.timestamp_opt(seconds.into(), 0).unwrap()
 }
 
