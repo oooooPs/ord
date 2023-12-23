@@ -85,13 +85,6 @@ impl Options {
     }
   }
 
-  pub(crate) fn inscription_tx_push_url(&self) -> Option<String> {
-    match &self.inscription_tx_push_url {
-      Some(url) => Some(url.to_string()),
-      None => None
-    }
-  }
-
 
   pub(crate) fn first_inscription_height(&self) -> u32 {
     if integration_test() {

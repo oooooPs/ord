@@ -12,7 +12,6 @@ enum Curse {
   Stutter,
   UnrecognizedEvenField,
 }
-use {super::*, inscription::Curse};
 use serde_json::{Value, json};
 
 #[derive(Debug, Clone)]

@@ -18,25 +18,25 @@ pub(super) struct Rest {
 impl Rest {
 
   pub async fn inscription(
-    Extension(page_config): Extension<Arc<PageConfig>>,
+    Extension(server_config): Extension<Arc<ServerConfig>>,
     Extension(index): Extension<Arc<Index>>,
     Path(inscription_id): Path<InscriptionId>,
   ) -> ServerResult<Json<Value>>{
 
     Ok(
-      Json(_get_inscription(&page_config, &index, inscription_id)?)
+      Json(_get_inscription(&server_config, &index, inscription_id)?)
     )
   }
 
   pub async fn inscriptions(
-    Extension(page_config): Extension<Arc<PageConfig>>,
+    Extension(server_config): Extension<Arc<ServerConfig>>,
     Extension(index): Extension<Arc<Index>>,
     extract::Json(inscription_ids): extract::Json<Vec<InscriptionId>>,
   ) -> ServerResult<Json<Vec<Value>>>{
     let mut _inscriptions: Vec<Value> = vec![];
 
     for inscription_id in inscription_ids {
-      let inscription = _get_inscription(&page_config, &index, inscription_id)?;
+      let inscription = _get_inscription(&server_config, &index, inscription_id)?;
       _inscriptions.push(inscription);
     }
 
@@ -46,7 +46,7 @@ impl Rest {
   }
 
   pub async fn sat(
-    Extension(page_config): Extension<Arc<PageConfig>>,
+    Extension(server_config): Extension<Arc<ServerConfig>>,
     Extension(index): Extension<Arc<Index>>,
     Path(DeserializeFromStr(sat)): Path<DeserializeFromStr<Sat>>,
   ) -> ServerResult<Json<Value>> {
@@ -75,11 +75,11 @@ impl Rest {
   }
 
   pub async fn output(
-    Extension(page_config): Extension<Arc<PageConfig>>,
+    Extension(server_config): Extension<Arc<ServerConfig>>,
     Extension(index): Extension<Arc<Index>>,
     Path(outpoint): Path<OutPoint>,
   ) -> ServerResult<Json<Value>> {
-    let (output, inscriptions, address, ranges) = _output(&index, outpoint, &page_config)?;
+    let (output, inscriptions, address, ranges) = _output(&index, outpoint, &server_config)?;
 
     Ok(
       Json(json!({
@@ -94,7 +94,7 @@ impl Rest {
   }
 
   pub async fn outputs(
-    Extension(page_config): Extension<Arc<PageConfig>>,
+    Extension(server_config): Extension<Arc<ServerConfig>>,
     Extension(index): Extension<Arc<Index>>,
     extract::Json(outpoints): extract::Json<Vec<OutPoint>>
   ) -> ServerResult<Json<Vec<Value>>> {
@@ -102,7 +102,7 @@ impl Rest {
     let mut _outputs: Vec<Value> = vec![];
 
     for outpoint in outpoints {
-      let (output, inscriptions, address, ranges) = _output(&index, outpoint, &page_config)?;
+      let (output, inscriptions, address, ranges) = _output(&index, outpoint, &server_config)?;
 
       _outputs.push(json!({
         "outpoint": outpoint,
@@ -122,7 +122,7 @@ impl Rest {
 
 }
 
-fn _output(index: &Arc<Index>, outpoint: OutPoint, page_config: &Arc<PageConfig>) -> Result<(TxOut, Vec<InscriptionId>, String, Vec<Value>), ServerError> {
+fn _output(index: &Arc<Index>, outpoint: OutPoint, server_config: &Arc<ServerConfig>) -> Result<(TxOut, Vec<InscriptionId>, String, Vec<Value>), ServerError> {
     let list = if index.has_sat_index() {
       index.list(outpoint)?
     } else {
@@ -152,7 +152,7 @@ fn _output(index: &Arc<Index>, outpoint: OutPoint, page_config: &Arc<PageConfig>
     };
     let inscriptions = index.get_inscriptions_on_output(outpoint)?;
     let mut address: String = "".to_owned();
-    if let Ok(_address) = page_config.chain.address_from_script(&output.script_pubkey) {
+    if let Ok(_address) = server_config.chain.address_from_script(&output.script_pubkey) {
       address = _address.to_string();
     }
     let ranges = match list {
@@ -167,7 +167,7 @@ fn _output(index: &Arc<Index>, outpoint: OutPoint, page_config: &Arc<PageConfig>
 
 
 fn _get_inscription(
-  page_config: &Arc<PageConfig>,
+  server_config: &Arc<ServerConfig>,
   index: &Arc<Index>,
   inscription_id: InscriptionId,
 ) -> Result<Value, ServerError>{
@@ -200,7 +200,7 @@ fn _get_inscription(
 
   let mut address: String = "".to_owned();
   if let Some(_output) = output.clone() {
-    address = match page_config.chain.address_from_script(&_output.script_pubkey) {
+    address = match server_config.chain.address_from_script(&_output.script_pubkey) {
       Ok(_address) => _address.to_string(),
       Err(_) => "".to_owned()
     }

@@ -52,11 +52,6 @@ mod accept_json;
 mod error;
 mod rest;
 
-#[derive(Clone)]
-pub struct ServerConfig {
-  pub is_json_api_enabled: bool,
-}
-
 enum InscriptionQuery {
   Id(InscriptionId),
   Number(i32),
