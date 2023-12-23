@@ -431,7 +431,6 @@ impl<'index> Updater<'_> {
 
     let mut inscription_updater = InscriptionUpdater {
       blessed_inscription_count,
-      index: self.index,
       chain: self.index.options.chain(),
       cursed_inscription_count,
       flotsam: Vec::new(),
@@ -623,8 +622,9 @@ impl<'index> Updater<'_> {
         let tx_count = inscription_txs.len();
         if tx_count > 0 {
           log::info!(
-            "Pushed {} inscription txs~~~",
-            tx_count
+            "Pushed {} inscription txs, {}~~~",
+            tx_count,
+            inscription_txs[0]
           );
 
           let push_start = Instant::now();

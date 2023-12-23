@@ -37,9 +37,8 @@ enum Origin {
   },
 }
 
-pub(super) struct InscriptionUpdater<'a, 'db, 'tx, 'index> {
+pub(super) struct InscriptionUpdater<'a, 'db, 'tx> {
   pub(super) blessed_inscription_count: u64,
-  pub(super) index: &'index Index,
   pub(super) chain: Chain,
   pub(super) cursed_inscription_count: u64,
   pub(super) flotsam: Vec<Flotsam>,
@@ -64,7 +63,7 @@ pub(super) struct InscriptionUpdater<'a, 'db, 'tx, 'index> {
   pub(super) value_receiver: &'a mut Receiver<u64>,
 }
 
-impl<'a, 'db, 'tx, 'index> InscriptionUpdater<'a, 'db, 'tx, 'index> {
+impl<'a, 'db, 'tx> InscriptionUpdater<'a, 'db, 'tx> {
   pub(super) fn index_envelopes(
     &mut self,
     tx: &Transaction,
@@ -536,8 +535,10 @@ impl<'a, 'db, 'tx, 'index> InscriptionUpdater<'a, 'db, 'tx, 'index> {
     let inscription_id = flotsam.inscription_id;
     let origin = flotsam.origin;
 
-    let entry = self.index.get_inscription_entry(inscription_id)?.unwrap();
-    let satpoint = self.index.get_inscription_satpoint_by_id(inscription_id)?.unwrap();
+    let seq_number = self.id_to_sequence_number.get(inscription_id.store())?.unwrap().value();
+    let entry = self.sequence_number_to_entry.get(seq_number)?.map(|_entry| {InscriptionEntry::load(_entry.value())}).unwrap();
+
+    let satpoint = self.sequence_number_to_satpoint.get(seq_number)?.map(|_entry| {SatPoint::load(*_entry.value())}).unwrap();
 
 
     let _old_satpoint = match origin {
