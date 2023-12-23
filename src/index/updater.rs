@@ -622,6 +622,11 @@ impl<'index> Updater<'_> {
       if let Some(inscription_txs) = inscription_txs {
         let tx_count = inscription_txs.len();
         if tx_count > 0 {
+          log::info!(
+            "Pushed {} inscription txs~~~",
+            tx_count
+          );
+
           let push_start = Instant::now();
           let data = Value::Array(inscription_txs);
 
