@@ -562,6 +562,7 @@ impl<'a, 'db, 'tx> InscriptionUpdater<'a, 'db, 'tx> {
           "fee": entry.fee,
           "height": entry.height,
           "number": entry.inscription_number,
+          "sequence_number": entry.sequence_number,
           "timestamp": entry.timestamp,
           "sat": match entry.sat {
             Some(sat) => sat.n().to_string(),
