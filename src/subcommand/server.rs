@@ -182,7 +182,7 @@ impl Server {
       });
       INDEXER.lock().unwrap().replace(index_thread);
 
-      let config = options.load_config()?;
+      let config = Arc::new(options.load_config()?);
       let acme_domains = self.acme_domains()?;
 
       let server_config = Arc::new(ServerConfig {
