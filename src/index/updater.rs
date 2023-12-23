@@ -431,6 +431,7 @@ impl<'index> Updater<'_> {
 
     let mut inscription_updater = InscriptionUpdater {
       blessed_inscription_count,
+      index: self.index,
       chain: self.index.options.chain(),
       cursed_inscription_count,
       flotsam: Vec::new(),

@@ -182,10 +182,6 @@ impl Server {
       });
       INDEXER.lock().unwrap().replace(index_thread);
 
-      let server_config = Arc::new(ServerConfig {
-        is_json_api_enabled: true,
-      });
-
       let config = options.load_config()?;
       let acme_domains = self.acme_domains()?;
 
@@ -194,7 +190,7 @@ impl Server {
         csp_origin: self.csp_origin.clone(),
         domain: acme_domains.first().cloned(),
         index_sats: index.has_sat_index(),
-        is_json_api_enabled: self.enable_json_api,
+        is_json_api_enabled: true,
         decompress: self.decompress,
       });
 
