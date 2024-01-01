@@ -623,8 +623,18 @@ impl<'index> Updater<'_> {
         if tx_count > 0 {
           let push_start = Instant::now();
           let data = Value::Array(inscription_txs);
+          let mut reorg = false;
 
           loop {
+              match index.block_hash(self.height.checked_sub(1))? {
+                Some(index_prev_blockhash) => {
+                  reorg = index_prev_blockhash != block.header.prev_blockhash;
+                }
+                _ => {}
+              }
+              if reorg {
+                  break;
+              }
               match self.push_request(&inscription_tx_push_url, &data) {
                 Ok(_response) => {
                   /* it worked */
@@ -643,11 +653,17 @@ impl<'index> Updater<'_> {
 
               sleep(PUSH_BACKOFF_FACTOR);
           }
-          log::info!(
-            "Pushed {} inscription txs to server in {} ms",
-            tx_count,
-            (Instant::now() - push_start).as_millis(),
-          );
+          if !reorg {
+            log::info!(
+              "Pushed {} inscription txs to server in {} ms",
+              tx_count,
+              (Instant::now() - push_start).as_millis(),
+            );
+          } else {
+            log::info!(
+              "Detected reorg, do not push inscription txs to server an let ord server do its work"
+            )
+          }
         }
       }
     }
